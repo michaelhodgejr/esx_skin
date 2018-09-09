@@ -477,6 +477,8 @@ function SkinDialog(skinId)
     DisplayOnscreenKeyboard(false, "", "", "", "", "", "", 20)
 
     while true do
+      DisableAllControlActions(0)
+
       if (UpdateOnscreenKeyboard() == 1) then
         local label = GetOnscreenKeyboardResult()
 
@@ -498,7 +500,6 @@ end
 function SkinSetLabel(skinId, label)
   ESX.TriggerServerCallback('esx_skin:setSkinLabel', function()
     ESX.ShowNotification('Your ped has been renamed!')
-    SelectSkinMenu()
   end, skinId, label)
 
 end
