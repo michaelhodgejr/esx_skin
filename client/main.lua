@@ -90,7 +90,7 @@ function OpenMenu(submitCb, cancelCb, restrict)
       'default', GetCurrentResourceName(), 'skin',
       {
         title = _U('skin_menu'),
-        align = 'top-left',
+        align = 'top-right',
         elements = elements
       },
       function(data, menu)
@@ -104,7 +104,7 @@ function OpenMenu(submitCb, cancelCb, restrict)
       end, function(data, menu)
 		ESX.UI.Menu.Open('default', GetCurrentResourceName(), 'confirm_escape', {
 			title = _U('confirm_escape'),
-			align = 'top-left',
+			align = 'top-right',
 			elements = {
 				{label = _U('no'),  value = 'no'},
 				{label = _U('yes'), value = 'yes'}
@@ -271,8 +271,8 @@ function OpenSaveableMenu(submitCb, cancelCb, restrict)
     DeleteSkinCam()
 
     TriggerEvent('skinchanger:getSkin', function(skin)
-
-      TriggerServerEvent('esx_skin:save', skin)
+      -- Create Skin Database Entry with active flag
+      TriggerServerEvent('esx_skin:create', skin)
 
       if submitCb ~= nil then
         submitCb(data, menu)
@@ -281,36 +281,234 @@ function OpenSaveableMenu(submitCb, cancelCb, restrict)
     end)
 
   end, cancelCb, restrict)
-
 end
 
 AddEventHandler('playerSpawned', function()
-
   Citizen.CreateThread(function()
-
     while not PlayerLoaded do
       Citizen.Wait(0)
     end
 
     if FirstSpawn then
-
-      ESX.TriggerServerCallback('esx_skin:getPlayerSkin', function(skin, jobSkin)
-
-        if skin == nil then
-          TriggerEvent('skinchanger:loadSkin', {sex = 0}, OpenSaveableMenu)
-        else
-          TriggerEvent('skinchanger:loadSkin', skin)
-        end
-
-      end)
-
+      getAndLoadActiveSkin()
       FirstSpawn = false
-
     end
+  end)
+end)
+
+function getAndLoadActiveSkin()
+  ESX.TriggerServerCallback('esx_skin:getActivePlayerSkin', function(skin, jobSkin)
+      if skin == nil then
+        skin = {sex = 0}
+        TriggerEvent('skinchanger:loadSkin', skin)
+        OpenSaveableMenu()
+      else
+        TriggerEvent('skinchanger:loadSkin', skin)
+        LastSkin = skin
+      end
+    end)
+end
+
+function openSkinSelectionMenu()
+  ESX.UI.Menu.CloseAll()
+
+  local elements = {
+    {label = "Create Ped", value = "create_ped"},
+    {label = "Select Ped", value = "select_ped"},
+  }
+
+  ESX.UI.Menu.Open(
+    'default', GetCurrentResourceName(), 'skin_changer',
+    {
+      title    = 'Select A Option',
+      align    = 'top-right',
+      elements = elements,
+    },
+    function(data, menu)
+      menu.close()
+
+      if(data.current.value == 'create_ped') then
+        TriggerEvent('esx_skin:openSaveableMenu')
+      end
+
+      if(data.current.value == 'select_ped') then
+        SelectSkinMenu()
+      end
+    end,
+    function (data, menu)
+      menu.close()
+    end
+ )
+end
+
+function SelectSkinMenu()
+  local elements = {}
+  ESX.UI.Menu.CloseAll()
+
+  ESX.TriggerServerCallback('esx_skin:getPlayerSkins', function(skins)
+    for index, skin in pairs(skins) do
+      name = skin.name
+
+      if not skin.name then
+        name = "Ped #" .. index;
+      end
+
+      if skin.active then
+        name = name .. " [ACTIVE]"
+      end
+
+      table.insert(elements, {label = name, value = skin.id, skinData = skin})
+    end
+
+    table.insert(elements, {label = 'Go Back', value='go_back'})
+
+    ESX.UI.Menu.Open(
+      'default', GetCurrentResourceName(), 'skin_changer_skin_list',
+      {
+        title    = 'Select A Ped',
+        align    = 'top-right',
+        elements = elements,
+      },
+      function(data, menu)
+        menu.close()
+        if data.current.value == 'go_back' then
+          openSkinSelectionMenu()
+        else
+          loadIndividualSkinMenu(data.current.skinData, data.current.label)
+        end
+      end,
+      function(data, menu)
+        menu.close()
+      end
+    )
 
   end)
 
-end)
+end
+
+function loadIndividualSkinMenu(skin, skinName)
+  local elements = {
+    {label = "Rename Ped", value = "rename_ped"}
+  }
+
+  if not skin.active then
+    table.insert(elements, {label = "Delete Ped", value = "delete_ped"})
+    table.insert(elements, {label = "Make Ped Active", value = "activate_ped"})
+  end
+
+  table.insert(elements, {label = "Go Back", value = "go_back"})
+
+  ESX.UI.Menu.CloseAll()
+
+  ESX.UI.Menu.Open(
+    'default', GetCurrentResourceName(), 'skin_changer',
+    {
+      title    = "Options for " .. skinName,
+      align    = 'top-right',
+      elements = elements,
+    },
+    function(data, menu)
+      menu.close()
+
+      if(data.current.value == 'activate_ped') then
+        -- Load Skin on Ped
+        TriggerEvent('skinchanger:loadSkin', skin.skin)
+
+        LastSkin = skin.skin
+
+        -- Make Skin Active
+        ESX.TriggerServerCallback('esx_skin:setSkinActive', function()
+          ESX.ShowNotification('You are now ' .. skinName .. '!')
+        end, skin)
+
+      end
+
+      if(data.current.value == 'rename_ped') then
+        SkinDialog(skin.id)
+      end
+
+      if(data.current.value == 'delete_ped') then
+        confirmationMenu(skin, skinName)
+      end
+
+      if(data.current.value == 'go_back') then
+        SelectSkinMenu()
+      end
+
+    end,
+    function(data, menu)
+      menu.close()
+    end
+  )
+
+end
+
+function confirmationMenu(skin, skinName)
+  local elements = {
+    {label = "Yes", value = "yes"},
+    {label = "No", value = "no"},
+  }
+
+  ESX.UI.Menu.CloseAll()
+
+  ESX.UI.Menu.Open(
+    'default', GetCurrentResourceName(), 'skin_changer_confirmation_menu',
+    {
+      title    = "Are you sure you wish to delete ped " .. skinName .. "?",
+      align    = 'top-right',
+      elements = elements,
+    },
+    function(data, menu)
+      menu.close()
+
+      if(data.current.value == 'yes') then
+        deleteSkin(skin.id)
+      end
+
+      if(data.current.value == 'no') then
+        loadIndividualSkinMenu(skin, skinName)
+      end
+    end
+  )
+end
+
+function SkinDialog(skinId)
+  Citizen.CreateThread(function()
+    DisplayOnscreenKeyboard(false, "", "", "", "", "", "", 20)
+
+    while true do
+      if (UpdateOnscreenKeyboard() == 1) then
+        local label = GetOnscreenKeyboardResult()
+
+        if (string.len(label) > 0) then
+            SkinSetLabel(skinId, label)
+            break
+          else
+            DisplayOnscreenKeyboard(false, "", "", "", "", "", "", 20)
+          end
+      elseif (UpdateOnscreenKeyboard() == 2) then
+        break
+      end
+
+      Citizen.Wait(0)
+    end
+  end)
+end
+
+function SkinSetLabel(skinId, label)
+  ESX.TriggerServerCallback('esx_skin:setSkinLabel', function()
+    ESX.ShowNotification('Your ped has been renamed!')
+    SelectSkinMenu()
+  end, skinId, label)
+
+end
+
+function deleteSkin(skinId)
+  ESX.TriggerServerCallback('esx_skin:deleteSkin', function()
+    ESX.ShowNotification('Your ped has been deleted!')
+    SelectSkinMenu()
+  end, skinId)
+end
 
 RegisterNetEvent('esx:playerLoaded')
 AddEventHandler('esx:playerLoaded', function(xPlayer)
@@ -338,6 +536,14 @@ end)
 RegisterNetEvent('esx_skin:openSaveableMenu')
 AddEventHandler('esx_skin:openSaveableMenu', function(submitCb, cancelCb)
   OpenSaveableMenu(submitCb, cancelCb, nil)
+end)
+
+--[[
+  @TODO REMOVE THIS
+]]
+RegisterNetEvent('esx_skin:openSelectSkinMenu')
+AddEventHandler('esx_skin:openSelectSkinMenu', function(submitCb, cancelCb)
+  openSkinSelectionMenu()
 end)
 
 RegisterNetEvent('esx_skin:openSaveableRestrictedMenu')
