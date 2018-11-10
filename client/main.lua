@@ -313,8 +313,8 @@ function openSkinSelectionMenu()
   ESX.UI.Menu.CloseAll()
 
   local elements = {
-    {label = "Create Ped", value = "create_ped"},
-    {label = "Select Ped", value = "select_ped"},
+    {label = "Create Character", value = "create_ped"},
+    {label = "Select Character", value = "select_ped"},
   }
 
   ESX.UI.Menu.Open(
@@ -343,6 +343,8 @@ end
 
 function SelectSkinMenu()
   local elements = {}
+  local elementPages = {}
+
   ESX.UI.Menu.CloseAll()
 
   ESX.TriggerServerCallback('esx_skin:getPlayerSkins', function(skins)
@@ -350,7 +352,7 @@ function SelectSkinMenu()
       name = skin.name
 
       if not skin.name then
-        name = "Ped #" .. index;
+        name = "Char #" .. index;
       end
 
       if skin.active then
@@ -358,6 +360,31 @@ function SelectSkinMenu()
       end
 
       table.insert(elements, {label = name, value = skin.id, skinData = skin})
+
+      if tablelength(elements) >= 10 then
+        table.insert(elementPages, elements)
+        elements = {}
+      end
+    end
+
+    table.insert(elementPages, elements)
+    selectSkinPage(elementPages, 1)
+  end)
+end
+
+function selectSkinPage(elementPages, page)
+
+  if page <= tablelength(elementPages) then		
+    local elements = {}
+
+    if page > 1 then
+      table.insert(elements, {label = "Previous Page", value = "pp"})			
+    end
+
+    elements = mergeTables(elements, elementPages[page])
+    
+    if page < tablelength(elementPages) then
+      table.insert(elements, {label = "Next Page", value = "np"})
     end
 
     table.insert(elements, {label = 'Go Back', value='go_back'})
@@ -365,13 +392,20 @@ function SelectSkinMenu()
     ESX.UI.Menu.Open(
       'default', GetCurrentResourceName(), 'skin_changer_skin_list',
       {
-        title    = 'Select A Ped',
+        title    = 'Select A Character',
         align    = 'top-right',
         elements = elements,
       },
       function(data, menu)
         menu.close()
-        if data.current.value == 'go_back' then
+
+        if data.current.value == "np" then
+          page = page + 1
+          selectSkinPage(elementPages,page)
+        elseif data.current.value == "pp" then
+          page = page - 1
+          selectSkinPage(elementPages,page)
+        elseif data.current.value == 'go_back' then
           openSkinSelectionMenu()
         else
           loadIndividualSkinMenu(data.current.skinData, data.current.label)
@@ -381,19 +415,17 @@ function SelectSkinMenu()
         menu.close()
       end
     )
-
-  end)
-
+  end
 end
 
 function loadIndividualSkinMenu(skin, skinName)
   local elements = {
-    {label = "Rename Ped", value = "rename_ped"}
+    {label = "Rename Character", value = "rename_ped"}
   }
 
   if not skin.active then
-    table.insert(elements, {label = "Delete Ped", value = "delete_ped"})
-    table.insert(elements, {label = "Make Ped Active", value = "activate_ped"})
+    table.insert(elements, {label = "Delete Character", value = "delete_ped"})
+    table.insert(elements, {label = "Make Character Active", value = "activate_ped"})
   end
 
   table.insert(elements, {label = "Go Back", value = "go_back"})
@@ -454,7 +486,7 @@ function confirmationMenu(skin, skinName)
   ESX.UI.Menu.Open(
     'default', GetCurrentResourceName(), 'skin_changer_confirmation_menu',
     {
-      title    = "Are you sure you wish to delete ped " .. skinName .. "?",
+      title    = "Are you sure you wish to delete character " .. skinName .. "?",
       align    = 'top-right',
       elements = elements,
     },
@@ -499,14 +531,14 @@ end
 
 function SkinSetLabel(skinId, label)
   ESX.TriggerServerCallback('esx_skin:setSkinLabel', function()
-    ESX.ShowNotification('Your ped has been renamed!')
+    ESX.ShowNotification('Your character has been renamed!')
   end, skinId, label)
 
 end
 
 function deleteSkin(skinId)
   ESX.TriggerServerCallback('esx_skin:deleteSkin', function()
-    ESX.ShowNotification('Your ped has been deleted!')
+    ESX.ShowNotification('Your character has been deleted!')
     SelectSkinMenu()
   end, skinId)
 end
@@ -558,3 +590,33 @@ AddEventHandler('esx_skin:requestSaveSkin', function()
     TriggerServerEvent('esx_skin:responseSaveSkin', skin)
   end)
 end)
+
+
+
+  --[[
+    Determines how many elements exist in a table
+    Params
+    T - table
+    Returns
+    integer
+  ]]
+  function tablelength(T)
+    local count = 0
+    for _ in pairs(T) do count = count + 1 end
+    return count
+  end
+
+  --[[
+    Merges two tables into one
+    Params
+    t1 - table
+    t2 - table
+    Returns
+    table
+  ]]
+  function mergeTables(t1, t2)
+    for k,v in ipairs(t2) do
+      table.insert(t1, v)
+    end
+    return t1
+  end

@@ -194,7 +194,7 @@ end, function(source, args, user)
   TriggerClientEvent('chatMessage', source, "SYSTEM", {255, 0, 0}, 'Insufficient permissions!')
 end, {help = _U('skin')})
 
-TriggerEvent('es:addGroupCommand', 'pedmenu', 'user', function(source, args, user)
+TriggerEvent('es:addGroupCommand', 'charmenu', 'user', function(source, args, user)
   TriggerClientEvent('esx_skin:openSelectSkinMenu', source)
 end, function(source, args, user)
   TriggerClientEvent('chatMessage', source, "SYSTEM", {255, 0, 0}, 'Insufficient permissions!')
