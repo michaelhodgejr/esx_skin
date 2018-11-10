@@ -20,12 +20,36 @@ AddEventHandler('esx_skin:create', function(skin)
   )
 
   MySQL.Sync.execute(
-    'INSERT INTO skins(`skin`, `identifier`, `active`)VALUES(@skin, @identifier, 1)',
-    {
+    'INSERT INTO skins(`skin`, `identifier`, `active`)VALUES(@skin, @identifier, 1)', {
       ['@skin']       = json.encode(skin),
       ['@identifier'] = xPlayer.identifier
     }
   )
+
+  -- Get active skin and update users table with active_char_id 
+  MySQL.Async.fetchAll('SELECT id FROM skins WHERE `active` = 1 AND `identifier` = @identifier', {
+    ['@identifier'] = xPlayer.identifier
+  }, function(skin)
+        active_char_id = skin[1].id
+
+        MySQL.Async.execute("UPDATE `users` SET `active_char_id` = @id WHERE identifier = @identifier",
+          {
+            ['@id'] = active_char_id,
+            ['@identifier'] = xPlayer.identifier
+          }
+        )
+
+
+        -- A little cleanup here. With new accounts inventory is created with null values so we want to update those to
+        -- have the correct skin ID
+        MySQL.Async.execute("UPDATE character_inventory SET `skin_id` = @skin_id WHERE identifier = @identifier AND skin_id IS NULL",
+        {
+            ['@skin_id'] = active_char_id,
+            ['@identifier'] = xPlayer.identifier
+          }
+        )
+   end)
+
 
   -- This is to ensure as much compatability with other plugins as possible
   MySQL.Sync.execute("UPDATE `users` SET `skin` = @skin WHERE identifier = @identifier",
@@ -120,6 +144,13 @@ ESX.RegisterServerCallback('esx_skin:setSkinActive', function(source, cb, skin)
     }
   )
 
+  MySQL.Sync.execute("UPDATE `users` SET `active_char_id` = @id WHERE identifier = @identifier",
+    {
+      ['@id'] = skin.id,
+      ['@identifier'] = xPlayer.identifier
+    }
+  )
+
   MySQL.Sync.execute("UPDATE `skins` SET `active` = 0 WHERE (id <> @id) AND (identifier = @identifier)",
     {
       ['@id'] = skin.id,
@@ -135,8 +166,38 @@ ESX.RegisterServerCallback('esx_skin:setSkinActive', function(source, cb, skin)
     }
   )
 
+  -- Load users inventory for this particular skin
+  reloadUsersInventory(xPlayer, skin.id)
+
+  ESX.SavePlayer(xPlayer)
+
   cb()
 end)
+
+function reloadUsersInventory(xPlayer, id)
+
+  -- Remove old inventory items from the user
+  for _, item in pairs(xPlayer.getInventory()) do
+    if item.count > 0 then
+      xPlayer.removeInventoryItem(item.name, item.count)
+    end
+  end
+
+  -- Add in characters inventory items
+  MySQL.Async.fetchAll(
+    'SELECT * FROM character_inventory WHERE identifier = @identifier AND skin_id = @skin_id',
+    {
+      ['@identifier'] = xPlayer.identifier,
+      ['@skin_id'] = id
+    },
+    function(items)
+      for _, item in pairs(items) do
+        if item.count > 0 then 
+          xPlayer.addInventoryItem(item.item, item.count)
+        end
+      end
+    end)
+end
 
 ESX.RegisterServerCallback('esx_skin:deleteSkin', function(source, cb, skinId)
   MySQL.Sync.execute("DELETE FROM `skins` WHERE id = @id",
