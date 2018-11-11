@@ -20,9 +20,10 @@ AddEventHandler('esx_skin:create', function(skin)
   )
 
   MySQL.Sync.execute(
-    'INSERT INTO skins(`skin`, `identifier`, `active`)VALUES(@skin, @identifier, 1)', {
+    'INSERT INTO skins(`skin`, `identifier`, `active`, `loadout`)VALUES(@skin, @identifier, 1, @loadout)', {
       ['@skin']       = json.encode(skin),
-      ['@identifier'] = xPlayer.identifier
+      ['@identifier'] = xPlayer.identifier,
+      ['@loadout']    = '[]'
     }
   )
 
@@ -145,6 +146,7 @@ ESX.RegisterServerCallback('esx_skin:setSkinActive', function(source, cb, skin)
           function(user)
             active_char_id = user[1].active_char_id
             saveAndResetInventory(xPlayer, active_char_id)
+            saveLoadout(xPlayer, active_char_id)
 
             -- Make Skin Active
             MySQL.Sync.execute("UPDATE `skins` SET `active` = 1 WHERE id = @id",
@@ -181,8 +183,12 @@ ESX.RegisterServerCallback('esx_skin:setSkinActive', function(source, cb, skin)
             -- Load users inventory for this particular skin
             reloadUsersInventory(xPlayer, skin.id)
 
+            -- Load users loadout for this skin
+            loadLoadout(xPlayer, skin.id)
+
             -- Save again to get new character inventory changes
             saveAndResetInventory(xPlayer, skin.id)
+
 
         end
    )
@@ -190,6 +196,38 @@ ESX.RegisterServerCallback('esx_skin:setSkinActive', function(source, cb, skin)
 
   cb()
 end)
+
+function loadLoadout(xPlayer, skin_id)
+
+  -- Remove old loadout items from the user
+  for _, weapon in pairs(xPlayer.getLoadout()) do
+    xPlayer.removeWeapon(weapon.name)
+  end
+
+  -- Add in characters weapons 
+  MySQL.Async.fetchAll(
+    'SELECT loadout FROM skins WHERE id = @skin_id',
+    {
+      ['@skin_id'] = skin_id
+    },
+    function(skins)
+      loadout = json.decode(skins[1].loadout)
+
+      for _, weapon in pairs(loadout) do
+        xPlayer.addWeapon(weapon.name, weapon.ammo)
+      end
+    end)
+end
+
+function saveLoadout(xPlayer, skin_id)
+  loadout = json.encode(xPlayer.loadout);
+
+  MySQL.Async.execute('UPDATE skins SET loadout = @loadout WHERE id = @skin_id',
+    {
+      ['@loadout'] = loadout,
+      ['@skin_id'] = skin_id
+  })
+end
 
 function saveAndResetInventory(xPlayer, skin_id)
 
