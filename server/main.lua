@@ -138,49 +138,86 @@ end)
 ESX.RegisterServerCallback('esx_skin:setSkinActive', function(source, cb, skin)
   local xPlayer = ESX.GetPlayerFromId(source)
 
-  MySQL.Sync.execute("UPDATE `skins` SET `active` = 1 WHERE id = @id",
-    {
-      ['@id'] = skin.id
-    }
-  )
+  -- Get current Skin Id
+	MySQL.Async.fetchAll('SELECT active_char_id FROM users WHERE identifier = @identifier', {
+					['@identifier'] = xPlayer.identifier
+                },
+          function(user)
+            active_char_id = user[1].active_char_id
+            saveAndResetInventory(xPlayer, active_char_id)
 
-  MySQL.Sync.execute("UPDATE `users` SET `active_char_id` = @id WHERE identifier = @identifier",
-    {
-      ['@id'] = skin.id,
-      ['@identifier'] = xPlayer.identifier
-    }
-  )
+            -- Make Skin Active
+            MySQL.Sync.execute("UPDATE `skins` SET `active` = 1 WHERE id = @id",
+              {
+                ['@id'] = skin.id
+              }
+            )
 
-  MySQL.Sync.execute("UPDATE `skins` SET `active` = 0 WHERE (id <> @id) AND (identifier = @identifier)",
-    {
-      ['@id'] = skin.id,
-      ['@identifier'] = xPlayer.identifier
-    }
-  )
+            -- Set the active skin id on the user table
+            MySQL.Sync.execute("UPDATE `users` SET `active_char_id` = @id WHERE identifier = @identifier",
+              {
+                ['@id'] = skin.id,
+                ['@identifier'] = xPlayer.identifier
+              }
+            )
 
-  -- This is to ensure as much compatability with other plugins as possible
-  MySQL.Sync.execute("UPDATE `users` SET `skin` = @skin WHERE identifier = @identifier",
-    {
-      ['@skin'] = json.encode(skin.skin),
-      ['@identifier'] = xPlayer.identifier
-    }
-  )
+            -- Make all other skins inactive
+            MySQL.Sync.execute("UPDATE `skins` SET `active` = 0 WHERE (id <> @id) AND (identifier = @identifier)",
+              {
+                ['@id'] = skin.id,
+                ['@identifier'] = xPlayer.identifier
+              }
+            )
 
-  -- Load users inventory for this particular skin
-  reloadUsersInventory(xPlayer, skin.id)
+            -- Set skin entry on the users table
+            -- This is to ensure as much compatability with other plugins as possible
+            MySQL.Sync.execute("UPDATE `users` SET `skin` = @skin WHERE identifier = @identifier",
+              {
+                ['@skin'] = json.encode(skin.skin),
+                ['@identifier'] = xPlayer.identifier
+              }
+            )
 
-  ESX.SavePlayer(xPlayer)
+            -- Load users inventory for this particular skin
+            reloadUsersInventory(xPlayer, skin.id)
+
+            -- Save again to get new character inventory changes
+            saveAndResetInventory(xPlayer, skin.id)
+
+        end
+   )
+
 
   cb()
 end)
+
+function saveAndResetInventory(xPlayer, skin_id)
+
+    ---print("RESETTING INVENTORY FOR SKIN ID " .. skin_id)
+    MySQL.Sync.execute('DELETE FROM character_inventory WHERE skin_id = @skin_id AND identifier = @identifier', {
+      ['@skin_id'] = skin_id,
+      ['@identifier'] = xPlayer.identifier
+    }) 
+
+
+    for _, item in pairs(xPlayer.getInventory()) do
+      ---print("INSERTING ITEM: " .. item.name .. "| Count: " .. item.count .. " | Skin Id: " .. skin_id)
+      MySQL.Sync.execute('INSERT INTO character_inventory(identifier, item, count, skin_id)VALUES(@identifier, @item, @count, @skin_id)',
+        {
+          ['@identifier'] = xPlayer.identifier,
+          ['@count']      = item.count,
+          ['@item']       = item.name,
+          ['@skin_id']    = skin_id 
+        }
+      )
+    end
+end
 
 function reloadUsersInventory(xPlayer, id)
 
   -- Remove old inventory items from the user
   for _, item in pairs(xPlayer.getInventory()) do
-    if item.count > 0 then
-      xPlayer.removeInventoryItem(item.name, item.count)
-    end
+    xPlayer.removeInventoryItem(item.name, item.count)
   end
 
   -- Add in characters inventory items
@@ -192,9 +229,7 @@ function reloadUsersInventory(xPlayer, id)
     },
     function(items)
       for _, item in pairs(items) do
-        if item.count > 0 then 
-          xPlayer.addInventoryItem(item.item, item.count)
-        end
+        xPlayer.addInventoryItem(item.item, item.count)
       end
     end)
 end
