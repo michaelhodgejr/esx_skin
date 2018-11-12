@@ -146,7 +146,7 @@ ESX.RegisterServerCallback('esx_skin:setSkinActive', function(source, cb, skin)
           function(user)
             active_char_id = user[1].active_char_id
             saveAndResetInventory(xPlayer, active_char_id)
-            saveLoadout(xPlayer, active_char_id)
+            saveLoadoutAndJob(xPlayer, active_char_id)
 
             -- Make Skin Active
             MySQL.Sync.execute("UPDATE `skins` SET `active` = 1 WHERE id = @id",
@@ -186,6 +186,9 @@ ESX.RegisterServerCallback('esx_skin:setSkinActive', function(source, cb, skin)
             -- Load users loadout for this skin
             loadLoadout(xPlayer, skin.id)
 
+            -- Set the job and the job grade for the user
+            setJob(xPlayer, skin.id)
+
             -- Save again to get new character inventory changes
             saveAndResetInventory(xPlayer, skin.id)
 
@@ -196,6 +199,22 @@ ESX.RegisterServerCallback('esx_skin:setSkinActive', function(source, cb, skin)
 
   cb()
 end)
+
+
+function setJob(xPlayer, skin_id)
+  MySQL.Async.fetchAll(
+    'SELECT job, job_grade FROM skins WHERE id = @skin_id',
+    {
+      ['@skin_id'] = skin_id
+    },
+    function(skins)
+      job = skins[1].job
+      job_grade = skins[1].job_grade
+
+      xPlayer.setJob(job, job_grade);
+    end)
+end
+
 
 function loadLoadout(xPlayer, skin_id)
 
@@ -219,12 +238,14 @@ function loadLoadout(xPlayer, skin_id)
     end)
 end
 
-function saveLoadout(xPlayer, skin_id)
+function saveLoadoutAndJob(xPlayer, skin_id)
   loadout = json.encode(xPlayer.loadout);
 
-  MySQL.Async.execute('UPDATE skins SET loadout = @loadout WHERE id = @skin_id',
+  MySQL.Async.execute('UPDATE skins SET loadout = @loadout, job = @job, job_grade = @job_grade WHERE id = @skin_id',
     {
       ['@loadout'] = loadout,
+      ['@job']        = xPlayer.job.name,
+      ['@job_grade']  = xPlayer.job.grade,
       ['@skin_id'] = skin_id
   })
 end
